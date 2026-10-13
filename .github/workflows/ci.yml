@@ -68,6 +68,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -78,12 +81,19 @@ jobs:
         run: |
           npm install -g appium@2
           appium driver install uiautomator2
+          appium --version
       - name: Download ApiDemos sample app
         run: |
           mkdir -p apps
-          curl -sSL -o apps/ApiDemos-debug.apk             https://github.com/appium/android-apidemos/releases/download/v3.1.0/ApiDemos-debug.apk
-      - name: Start Appium server
-        run: appium --log appium.log &
+          curl -sSL -o apps/ApiDemos-debug.apk \
+            https://github.com/appium/android-apidemos/releases/download/v3.1.0/ApiDemos-debug.apk
+          ls -la apps/
+      - name: Enable KVM for hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Run mobile suite on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -92,7 +102,18 @@ jobs:
           arch: x86_64
           profile: pixel_5
           disable-animations: true
-          script: pytest -m mobile --html=reports/mobile-report.html --self-contained-html
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # Appium must start inside this step: ANDROID_HOME and the booted
+          # emulator only exist once the action's environment is up.
+          script: |
+            adb devices
+            appium --log appium.log --log-level info &
+            for i in $(seq 1 30); do
+              curl -sf http://127.0.0.1:4723/status > /dev/null && break
+              echo "waiting for Appium server ($i/30)"; sleep 2
+            done
+            curl -sf http://127.0.0.1:4723/status || (echo "Appium did not start"; cat appium.log; exit 1)
+            pytest -m mobile --html=reports/mobile-report.html --self-contained-html
       - name: Upload mobile report and logs
         if: always()
         uses: actions/upload-artifact@v4
