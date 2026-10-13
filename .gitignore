@@ -7,3 +7,6 @@ reports/
 screenshots/
 .pytest_cache/
 *.log
+apps/*.apk
+apps/*.ipa
+appium.log

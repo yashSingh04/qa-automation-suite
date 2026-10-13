@@ -57,3 +57,47 @@ jobs:
           path: |
             reports/
             screenshots/
+
+  mobile-tests:
+    name: Mobile tests (Appium + Android emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Install Appium and the UiAutomator2 driver
+        run: |
+          npm install -g appium@2
+          appium driver install uiautomator2
+      - name: Download ApiDemos sample app
+        run: |
+          mkdir -p apps
+          curl -sSL -o apps/ApiDemos-debug.apk             https://github.com/appium/android-apidemos/releases/download/v3.1.0/ApiDemos-debug.apk
+      - name: Start Appium server
+        run: appium --log appium.log &
+      - name: Run mobile suite on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: pytest -m mobile --html=reports/mobile-report.html --self-contained-html
+      - name: Upload mobile report and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-artifacts
+          path: |
+            reports/
+            appium.log
